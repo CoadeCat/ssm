@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xmlns:aop="http://www.springframework.org/schema/aop"
+       xmlns:mybatis-spring="http://mybatis.org/schema/mybatis-spring"
+       xmlns:tx="http://www.springframework.org/schema/tx"
+       xmlns="http://www.springframework.org/schema/beans"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+       http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context.xsd
+        http://www.springframework.org/schema/aop https://www.springframework.org/schema/aop/spring-aop.xsd
+        http://mybatis.org/schema/mybatis-spring http://mybatis.org/schema/mybatis-spring-1.2.xsd
+        http://www.springframework.org/schema/tx http://www.springframework.org/schema/tx/spring-tx.xsd">
+
+
+
+    <!--配置Spring包扫描器, Spring负责管理数据源/事务控制/AOP/业务逻辑等操作 -->
+    <!-- 扫描除了@Controller和@ControllerAdvice外的所有注解 -->
+    <context:component-scan base-package="com">
+        <context:exclude-filter type="annotation" expression="org.springframework.stereotype.Controller"/>
+    </context:component-scan>
+
+    <!--============================数据源的配置============================-->
+    <!-- 引入JDBC配置文件 -->
+    <context:property-placeholder location="classpath:jdbc.properties" file-encoding="UTF-8"/>
+
+
+    <!-- 配置数据源(Druid连接池) -->
+    <bean id="dataSource" class="com.alibaba.druid.pool.DruidDataSource">
+        <property name="driverClassName" value="${jdbc.driverClassName}"></property>
+        <property name="url" value="${jdbc.url}"></property>
+        <property name="username" value="${jdbc.username}"></property>
+        <property name="password" value="${jdbc.password}"></property>
+        <property name="maxActive" value="${jdbc.maxActive}"></property>
+        <property name="initialSize" value="${jdbc.initialSize}"></property>
+    </bean>
+
+
+    <!--============================Spring-Mybatis整合配置============================-->
+    <!-- SqlSessionFactoryBean, 用于创建SqlSessionFactory -->
+    <bean id="sqlSessionFactory" class="org.mybatis.spring.SqlSessionFactoryBean">
+        <!-- 设置数据源 -->
+        <property name="dataSource" ref="dataSource"/>
+        <!-- 指定Mybatis配置文件位置 -->
+        <property name="configLocation" value="classpath:mybatis-config.xml"/>
+        <!-- 以下设置既可以写在Mybatis配置文件中, 也可以在这里显式给出 -->
+        <!-- 指定SQL映射文件位置 -->
+        <property name="mapperLocations" value="classpath:com/mapper/*.xml"/>
+    </bean>
+
+    <!-- 扫描dao接口 -->
+    <mybatis-spring:scan base-package="com.dao"/>
+
+    <!-- 配置一个用于批量操作的SqlSessionTemplate, 它是线程安全的, 也不需要我们手动close -->
+    <bean id="sqlSession" class="org.mybatis.spring.SqlSessionTemplate">
+        <constructor-arg name="sqlSessionFactory" ref="sqlSessionFactory"/>
+        <constructor-arg name="executorType" value="BATCH"/>
+    </bean>
+
+    <!--============================事务管理的配置============================-->
+    <!-- 配置事务管理器 -->
+    <bean id="transactionManager" class="org.springframework.jdbc.datasource.DataSourceTransactionManager">
+        <!-- 设置数据源 -->
+        <property name="dataSource" ref="dataSource"/>
+    </bean>
+
+    <!-- 开启事务管理的注解驱动, 扫描@Transactional等注解 -->
+    <!--<tx:annotation-driven/>-->
+
+    <!-- 配置事务增强 -->
+    <tx:advice id="txAdvice" transaction-manager="transactionManager">
+        <!-- 配置事务属性 -->
+        <tx:attributes>
+            <!-- name属性指定要在哪些方法上开启事务, 相当于对切入点进行二次过滤 -->
+            <tx:method name="get*" read-only="true" propagation="SUPPORTS"/>
+            <tx:method name="query*" read-only="true" propagation="SUPPORTS"/>
+            <tx:method name="*" read-only="false" propagation="REQUIRED" rollback-for="java.lang.Exception"/>
+        </tx:attributes>
+    </tx:advice>
+
+    <!-- AOP配置 -->
+    <aop:config>
+        <!-- 配置切入点表达式 -->
+        <aop:pointcut id="Pt" expression="execution(* com.service..*.*(..))"/>
+        <!-- 配置切面, 将Pointcut和Advice关联起来 -->
+        <aop:advisor advice-ref="txAdvice" pointcut-ref="Pt"/>
+    </aop:config>
+</beans>
